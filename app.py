@@ -98,8 +98,7 @@ def main():
             st.write(string_values_local)
 
             st.session_state['mid_ID_idx'] = get_mid_ID_idx(st.session_state['df'], first_idx)
-            # st.session_state['mid_ID_idx_local'] = get_mid_ID_idx(st.session_state['df_local'], first_idx)
-            st.session_state['mid_ID_idx_local'] = st.session_state['mid_ID_idx']
+            st.session_state['mid_ID_idx_local'] = get_mid_ID_idx(st.session_state['df_local'], first_idx)
 
             st.session_state['df'].iloc[first_idx[0]:, first_idx[1]:] = st.session_state['df'].iloc[first_idx[0]:, first_idx[1]:].apply(pd.to_numeric, errors='coerce')
             st.session_state['df_local'].iloc[first_idx[0]:, first_idx[1]:] = st.session_state['df_local'].iloc[first_idx[0]:, first_idx[1]:].apply(pd.to_numeric, errors='coerce')
@@ -107,8 +106,6 @@ def main():
                 st.session_state['df']=st.session_state['df'].iloc[:-1]
 
     if 'df' in st.session_state:
-
-
         uploaded_matrix_X = get_submatrix_withlabel(st.session_state['df'], first_idx[0], first_idx[1], st.session_state['mid_ID_idx'][0], st.session_state['mid_ID_idx'][1], first_idx, numberoflabel=number_of_label)
         uploaded_matrix_R = get_submatrix_withlabel(st.session_state['df'], st.session_state['mid_ID_idx'][0]+1, first_idx[1], st.session_state['df'].shape[0]-1, st.session_state['mid_ID_idx'][1], first_idx, numberoflabel=number_of_label)
         uploaded_matrix_C = get_submatrix_withlabel(st.session_state['df'], first_idx[0], st.session_state['mid_ID_idx'][1]+1, st.session_state['mid_ID_idx'][0], st.session_state['df'].shape[1]-1, first_idx, numberoflabel=number_of_label)
@@ -228,7 +225,7 @@ def main():
                             number_of_label=number_of_label,
                             mid_ID_idx=st.session_state["mid_ID_idx"],
                             ids_simbol=st.session_state.ids_simbol,
-                            insert_row_and_col_fn=insert_row_and_col,
+                            insert_row_and_col_fn = insert_row_and_col,
                         )
 
                         st.session_state["df_editing"] = df_new
@@ -296,18 +293,19 @@ def main():
         col1, col2, col3 = st.columns(3)
         with col1:
             if st.button('0인 행(열) 삭제'):
-                # removed_indices is returned as 4th element (functions.py updated)
-                result = remove_zero_series(st.session_state['df_editing'], first_idx, st.session_state['mid_ID_idx'])
-                st.session_state['df_editing'] = result[0]
-                st.session_state['data_editing_log'] += (result[1] + '\n\n')
-                st.session_state['mid_ID_idx'] = result[2]
-                removed_indices = result[3]
+                df_editing_t, msg_t, mid_ID_idx_t, removed_positions_t = remove_zero_series(
+                    st.session_state['df_editing'],
+                    first_idx,
+                    st.session_state['mid_ID_idx']
+                )
 
-                # Use 'drop_indices' to enforce same deletion on Local
-                st.session_state["edit_ops"].append({
-                    "type": "drop_indices", 
-                    "indices": removed_indices
-                })
+                st.session_state['df_editing'] = df_editing_t
+                st.session_state['data_editing_log'] += (msg_t + '\n\n')
+                st.session_state['mid_ID_idx'] = mid_ID_idx_t
+                st.session_state['remove_positions'] = removed_positions_t
+
+
+                st.session_state["edit_ops"].append({"type": "remove_zero", "remove_positions": st.session_state['remove_positions']})
                 st.session_state.show_edited = False
         with col2:
              if st.button('-값 절반으로 줄이기'):
@@ -336,7 +334,6 @@ def main():
                         transfer_to_new_sector_fn=transfer_to_new_sector,
                         remove_zero_series_fn=remove_zero_series,
                         reduce_negative_values_fn=reduce_negative_values,
-                        drop_rows_and_cols_fn=drop_rows_and_cols, # New
                         return_log=False,
                         batch_apply_fn=apply_batch_edit
                     )
@@ -356,6 +353,7 @@ def main():
         edited_matrix_X_local = get_submatrix_withlabel(st.session_state['df_edited_local'], first_idx[0],first_idx[1], st.session_state['mid_ID_idx_local'][0], st.session_state['mid_ID_idx_local'][1], first_idx, numberoflabel = 2)
         edited_matrix_R = get_submatrix_withlabel(st.session_state['df_edited'], st.session_state['mid_ID_idx'][0]+1,first_idx[1], st.session_state['df_edited'].shape[0]-1, st.session_state['mid_ID_idx'][1], first_idx, numberoflabel = 2)
         edited_matrix_C = get_submatrix_withlabel(st.session_state['df_edited'], first_idx[0], st.session_state['mid_ID_idx'][1]+1, st.session_state['mid_ID_idx'][0], st.session_state['df_edited'].shape[1]-1, first_idx, numberoflabel = 2)
+
         edited_files = {
         "edited_df": st.session_state['df_edited'],
         "edited_matrix_X": edited_matrix_X,
@@ -399,6 +397,8 @@ def main():
         st.session_state['normalization_denominator'] = st.session_state['df_edited'].iloc[st.session_state['df_edited'].shape[0]-1, first_idx[1]:st.session_state['mid_ID_idx'][1]]
         st.session_state['normalization_denominator'] = pd.to_numeric(st.session_state['normalization_denominator'])
         st.session_state['normalization_denominator_replaced'] = st.session_state['normalization_denominator'].replace(0, np.finfo(float).eps)
+
+        
         st.session_state['added_value_denominator'] = st.session_state['df_edited'].iloc[st.session_state['df_edited'].shape[0] - 2, first_idx[1]:st.session_state['mid_ID_idx'][1]]
         st.session_state['added_value_denominator'] = pd.to_numeric(st.session_state['added_value_denominator'])
         st.session_state['added_value_denominator_replaced'] = st.session_state['added_value_denominator'].replace(0, np.finfo(float).eps)
@@ -415,21 +415,23 @@ def main():
         st.session_state['V'] = V_matrix
 
         # 1) 두번째 행(= iloc[1])에서 '최종수요계' 찾기
-        header2 = edited_matrix_C.iloc[1].fillna("").astype(str).str.strip()
+        tmp_header_C = edited_matrix_C.iloc[1].fillna("").astype(str).str.strip()
 
         # 정확히 일치로 찾기
-        pos = np.where(header2.values == "최종수요계")[0]
+        pos = np.where(tmp_header_C.values == "최종수요계")[0]
         if len(pos) == 0:
             # 혹시 공백/표기가 다른 경우 대비(부분일치)
-            pos = np.where(header2.str.contains("최종수요", na=False).values)[0]
+            pos = np.where(tmp_header_C.str.contains("최종수요", na=False).values)[0]
 
         if len(pos) == 0:
             raise ValueError("edited_matrix_C의 2번째 행에서 '최종수요계' 열을 못 찾았음")
 
         col_pos = int(pos[0])  # '최종수요계' 열의 '위치(정수)'
 
-        # 2) 산업 행은 iloc[2:]부터 시작(라벨 2행 제거)
+        # edited_matrix_C 산업 행은 iloc[2:]부터 시작(라벨 2행 제거)
         st.session_state['y'] = pd.to_numeric(edited_matrix_C.iloc[2:, col_pos], errors="coerce").to_numpy().reshape(-1, 1)
+
+
 
 
 
@@ -448,11 +450,11 @@ def main():
         
         tmp = st.session_state['df_for_leontief_without_label'].copy()
         tmp = tmp.apply(pd.to_numeric, errors='coerce')
-        tmp = tmp.divide(st.session_state['normalization_denominator_replaced'].values, axis=1) ##d
+        tmp = tmp.divide(st.session_state['normalization_denominator_replaced'], axis=1) ##d
 
         tmp2 = st.session_state['df_for_r_without_label'].copy()
         tmp2 = tmp2.apply(pd.to_numeric, errors='coerce')
-        tmp2 = tmp2.divide(st.session_state['normalization_denominator_replaced'].values, axis=1) ##d
+        tmp2 = tmp2.divide(st.session_state['normalization_denominator_replaced'], axis=1) ##d
     
         st.session_state['df_for_leontief_with_label'].iloc[2:, 2:] = tmp
         st.session_state['df_for_r_with_label'].iloc[2:, 2:] = tmp2
@@ -536,6 +538,9 @@ def main():
         y = np.asarray(st.session_state['y']).reshape(-1, 1)
         y = y[:-1, :] 
 
+        y_vec = y.reshape(-1)           # (n,) 1D로 만들기
+        Y_matrix = np.diag(y_vec)       # (n,n) 대각행렬
+
         V = st.session_state['V']
         v = np.asarray(st.session_state['v'], dtype=float).reshape(1, -1)
 
@@ -547,55 +552,74 @@ def main():
         # 부가가치 유발 효과
         m_v = v @ L_local
 
-
-        # =========================
-        # [A] GDP(산업별 VA 유발액)
-        # =========================
-        base_df = st.session_state['df_for_local_leontief_with_label']
-
-        ids_col = base_df.iloc[1:, :2].reset_index(drop=True)  # 라벨은 그대로(첫 라벨행 포함된 구조 유지)
-
-        g_vec  = g.reshape(-1)
-        g_data = pd.concat(
-            [
-                pd.DataFrame(["GDP"], columns=["2"]),
-                pd.Series(g_vec).to_frame(name="2")
-            ],
-            axis=0
-        ).reset_index(drop=True)
-
-        st.session_state['gdp_by_industry'] = pd.concat([ids_col, g_data], axis=1)
-
-        st.session_state['GDP_total'] = float(g_vec.sum())
-        st.session_state['GDP_mean']  = float(g_vec.mean())
-
+        # W 생성
+        tmp_w = L @ Y_matrix
+        W =  V @ tmp_w
 
 
         # =========================
-        # [B] 부가가치 유발효과(m_v)
+        # g1,g2,g3 생성
         # =========================
+        base_df = st.session_state["df_for_leontief_with_label"]
         ids_col = base_df.iloc[1:, :2].reset_index(drop=True)
 
-        mv_vec  = m_v.reshape(-1)
-        mv_data = pd.concat(
-            [
-                pd.DataFrame(["부가가치유발효과"], columns=["2"]),
-                pd.Series(mv_vec).to_frame(name="2")
-            ],
-            axis=0
-        ).reset_index(drop=True)
+        # 1) W 정리
+        W = np.asarray(W, dtype=float)
+        gn_n = W.shape[0]
+        gn_ones = np.ones((gn_n, 1), dtype=float)
 
-        st.session_state['va_multiplier_by_sector'] = pd.concat([ids_col, mv_data], axis=1)
+        # 2) g1,g2,g3
+        g1_vec = (W @ gn_ones).reshape(-1)          # g1 = (W*1)^t  -> (n,)
+        g2_vec = (gn_ones.T @ W).reshape(-1)        # g2 = 1^t*W    -> (n,)
+        g3_vec = np.diag(W).reshape(-1)          # g3 = diag(W)  -> (n,)
 
-        st.session_state['m_v_total'] = float(mv_vec.sum())
-        st.session_state['m_v_mean']  = float(mv_vec.mean())
+        g123_vec = g1_vec + g2_vec - g3_vec      # (n,)
+
+        g1_data   = make_col("g1", g1_vec, "2")
+        g2_data   = make_col("g2",   g2_vec, "3")
+        g3_data   = make_col("g3", g3_vec, "4")
+        g123_data = make_col("g1+g2-g3",   g123_vec, "5")
+
+        # 3) 최종 테이블
+        st.session_state["g123_by_sector"] = pd.concat(
+            [ids_col, g1_data, g2_data, g3_data, g123_data],
+            axis=1
+        )
+
+        # 4) 요약값
+        st.session_state["g1_total"],   st.session_state["g1_mean"]   = float(g1_vec.sum()),   float(g1_vec.mean())
+        st.session_state["g2_total"],   st.session_state["g2_mean"]   = float(g2_vec.sum()),   float(g2_vec.mean())
+        st.session_state["g3_total"],   st.session_state["g3_mean"]   = float(g3_vec.sum()),   float(g3_vec.mean())
+        st.session_state["g123_total"], st.session_state["g123_mean"] = float(g123_vec.sum()), float(g123_vec.mean())
+
+        # =========================
+        # GDP(산업별 VA 유발액)
+        # =========================
+        g_vec = np.asarray(g, dtype=float).reshape(-1)
+        g_col = make_col("GDP", g_vec, colname="2")
+
+        st.session_state["gdp_by_industry"] = make_table(base_df, [g_col])
+        st.session_state["GDP_total"] = float(g_vec.sum())
+        st.session_state["GDP_mean"]  = float(g_vec.mean())
+
+        # =========================
+        # 부가가치 유발효과(m_v)
+        # =========================
+        mv_vec = np.asarray(m_v, dtype=float).reshape(-1)
+        mv_col = make_col("부가가치유발효과", mv_vec, colname="2")
+
+        st.session_state["va_multiplier_by_sector"] = make_table(base_df, [mv_col])
+        st.session_state["m_v_total"] = float(mv_vec.sum())
+        st.session_state["m_v_mean"]  = float(mv_vec.mean())
+
+
 
 
 
 
 
         st.subheader('Leontief 과정 matrices')
-        col1, col2, col3, col4, col5, col6, col7, col8, col9= st.tabs(['edited_df', 'normailization denominator', '투입계수행렬', 'leontief inverse','FL-BL','GDP','부가가치유발효과(국내)','부가가치계수행렬','부가가치계벡터'])
+        col1, col2, col3, col4, col5, col6, col7, col8, col9, col10= st.tabs(['edited_df', 'normailization denominator', '투입계수행렬', 'leontief inverse','FL-BL','g_series', 'GDP','부가가치유발효과(국내)','부가가치계수행렬','부가가치계벡터'])
         with col1:
             st.write(st.session_state['df_for_leontief'])
         with col2:
@@ -607,17 +631,37 @@ def main():
             invalid_positions = []
         with col5:
             st.write(st.session_state['fl_bl'])
+
         with col6:
+            st.write(st.session_state["g123_by_sector"])
+            # 화면을 2구역(좌: totals / 우: means)으로 분할
+            col_total, col_mean = st.columns(2)
+
+            with col_total:
+                st.write("##### Totals")
+                st.write("g1_total:" ,st.session_state['g1_total'])
+                st.write("g2_total:" ,st.session_state['g2_total'])
+                st.write("g3_total:" ,st.session_state['g3_total'])
+                st.write("g1+g2-g3_total:", st.session_state['g123_total'])
+
+            with col_mean:
+                st.write("##### Means")
+                st.write("g1_mean:", st.session_state['g1_mean'])
+                st.write("g2_mean:", st.session_state['g2_mean'])
+                st.write("g3_mean:", st.session_state['g3_mean'])
+                st.write("g1+g2-g3_mean:" ,st.session_state['g123_mean'])
+
+        with col7:
             st.write(st.session_state['gdp_by_industry'])
             st.write("GDP_total (sum g):", st.session_state['GDP_total'])
             st.write("GDP_mean (mean g):", st.session_state['GDP_mean'])
-        with col7:
+        with col8:
             st.write(st.session_state['va_multiplier_by_sector'])
             st.write("m_v_total (sum m_v):", st.session_state['m_v_total'])
             st.write("m_v_mean (mean m_v):", st.session_state['m_v_mean'])
-        with col8:
-            st.write(st.session_state['df_for_r_with_label'])
         with col9:
+            st.write(st.session_state['df_for_r_with_label'])
+        with col10:
             st.write(st.session_state['added_value_denominator'])
 
         st.subheader("레온티에프 역행렬을 통한 정합성 검증 내용")
@@ -765,7 +809,6 @@ def main():
         win_Diagon, win_N = separate_diagonals(win_N0)
 
         st.markdown("---")
-        st.subheader("2. 네트워크 추출 방식 선택")
 
         # --------------------------------------------------------------------------------
         # [Step 1] 초기화 함수 정의
@@ -778,48 +821,28 @@ def main():
                 if key in st.session_state:
                     del st.session_state[key]
 
-        # ---------------------------------------------------------------------
-        # 1. [Pre-calculation] 두 가지 방식 미리 계산 및 세션 저장
-        # ---------------------------------------------------------------------
-        
-        # 방식 1: threshold_count (기존: 최적 임계값 계산) 결과 저장 (Float + Fig + Text)
-        if 'res_method1_threshold' not in st.session_state:
-            with st.spinner("Method 1 (Distance/Connectivity) 계산 중..."):
-                # functions.py의 threshold_count 함수 호출 (임계값 float, fig, text 반환)
-                val, fig, txt = threshold_count(win_N)
-                st.session_state['res_method1_threshold'] = val
-                st.session_state['res_method1_fig'] = fig
-                st.session_state['res_method1_text'] = txt
 
-        # 방식 2: threshold_count_2 (신규: 무한급수 Method A) 결과 저장 (Matrix + Fig + Text)
-        if 'res_method2_matrix' not in st.session_state:
-            with st.spinner("Method 2 (Infinite Series) 계산 중..."):
-                # functions.py의 threshold_count_2 함수 호출 (행렬 ndarray, fig, text 반환)
-                mat, fig, txt = threshold_count_2(win_N)
-                st.session_state['res_method2_matrix'] = mat
-                st.session_state['res_method2_fig'] = fig
-                st.session_state['res_method2_text'] = txt
 
         # ---------------------------------------------------------------------
-        # [Persistent Display] 미리 계산된 결과 요약 표시 (항상 표시)
+        # 2. [UI] 라디오 버튼으로 방식 선택 (즉시 전환)
         # ---------------------------------------------------------------------
-        st.subheader("2. 네트워크 추출 방식 선택 및 분석 요약")
+        st.header("2. 네트워크 추출")
         
-        # Method 1 결과 표시
-        if 'res_method1_fig' in st.session_state:
-            with st.expander("Method 1 분석 결과 (Threshold Optimization)", expanded=True):
-                st.pyplot(st.session_state['res_method1_fig'])
-                st.markdown(st.session_state['res_method1_text'])
+        # 1) Method 1 분석 미리보기 (항상 표시 / Expander)
+        with st.expander("Method 1 분석 결과 (Threshold Optimization)", expanded=False):
+             if 'df_for_leontief_with_label' in st.session_state:
+                 # threshold_count 내부에서 그래프 및 텍스트 출력
+                 threshold_count(st.session_state['df_for_leontief_with_label'].iloc[2:, 2:])
 
-        # Method 2 (Method A) 결과 표시
-        if 'res_method2_fig' in st.session_state:
-            with st.expander("Method 2 분석 결과 (Infinite Series)", expanded=True):
-                st.pyplot(st.session_state['res_method2_fig'])
-                st.markdown(st.session_state['res_method2_text'])
-        
-        # ---------------------------------------------------------------------
-        # 3. [Parameter Selection] 사용자 선택
-        # ---------------------------------------------------------------------
+        # 2) Method 2 분석 미리보기 (항상 표시 / Expander)
+        with st.expander("Method 2 분석 결과 (Infinite Series)", expanded=False):
+             if 'df_for_leontief_with_label' in st.session_state:
+                 # threshold_count_2 내부에서 그래프 및 텍스트 출력
+                 # (method2는 결과 행렬을 cache 해두면 더 좋으나, 여기서는 시각화 로직만 호출)
+                 st.session_state['res_method2_matrix'] = threshold_count_2(st.session_state['df_for_leontief_with_label'].iloc[2:, 2:])
+
+
+        st.subheader("2-1. 네트워크 추출 방식 선택")
         method_option = st.radio(
             "분석 모드 선택",
             [
@@ -827,6 +850,7 @@ def main():
                 "Method 2: 무한급수 수렴 (Series Expansion)"
             ],
             index=0,
+            label_visibility="collapsed", # 상단 subheader가 있으므로 라벨 숨김
             on_change=reset_threshold_state,  # <--- [핵심] 값이 바뀌면 위 함수 실행 -> 결과 초기화
             help="Method 1은 거리 최소화 및 연결성 기반으로 임계값을 찾습니다. Method 2는 정보량 변화율이 수렴할 때까지 네트워크를 확장합니다."
         )
@@ -837,8 +861,265 @@ def main():
         final_network_matrix = None
 
         if method_option.startswith("Method 1"):
-            # Method 1 로직은 하단 "2. 아래는 임계값을 기준으로 filtering 결과" 섹션에서 처리됩니다.
-            pass
+            st.info("📊 **Method 1 분석 결과**")
+            st.write("🔹 이 방식은 거리 최소화 및 연결성을 기반으로 최적 임계값을 제안합니다.")
+            st.caption("👉 그래프를 참고하여 임계값을 설정하면, 해당 값 이하의 연결은 제거됩니다.")
+            
+            # Layout: Graph (Left) vs Controls (Right)
+            col_graph, col_controls = st.columns([2, 1])
+            
+            with col_graph:
+                st.markdown("##### 1️⃣ Threshold에 따른 생존비율 그래프")
+                suggested_val = 0.0
+                if 'df_for_leontief_with_label' in st.session_state:
+                     # threshold_count 함수는 그래프를 그리고, 분석 결과를 Markdown으로 출력하며, 제안값(float)을 반환함
+                     suggested_val = threshold_count(st.session_state['df_for_leontief_with_label'].iloc[2:, 2:])
+            
+            with col_controls:
+                st.markdown("##### 2️⃣ 임계값 설정")
+                st.info(f"좌측 분석 결과를 참고하여\n임계값을 입력하세요.\n\n**제안값:** `{suggested_val:.4f}`")
+                
+                # 텍스트 입력창 (기본값은 0.000이지만, 제안값을 참고하도록 안내)
+                input_val = st.text_input(
+                    '임계값 (Threshold)', 
+                    value='0.000',
+                    help=f"그래프의 Final Decision ({suggested_val:.4f}) 값을 입력하면 최적화된 결과를 얻을 수 있습니다."
+                )
+                threshold_val = float(input_val) if input_val else 0.0
+                
+                st.write("") # Margin
+                
+                if st.button('설정 적용하기 (Apply)', type="primary", use_container_width=True):
+                    # 버튼을 눌러야만 비로소 session_state에 등록되어 아래 결과창이 열림
+                    st.session_state.threshold = threshold_val
+                    st.session_state.threshold_cal = True
+                    st.rerun() # 상태 업데이트 후 즉시 리런하여 아래 결과창 표시
+
+            st.markdown("---")
+
+
+            if 'threshold' in st.session_state and st.session_state.show_edited:
+                if st.session_state.threshold_cal:
+                    # binary matrix 생성
+                    binary_matrix = make_binary_matrix(st.session_state['df_for_leontief_with_label'].iloc[2:, 2:].apply(pd.to_numeric, errors='coerce'), st.session_state.threshold)
+                    _, binary_matrix = separate_diagonals(binary_matrix)
+                    binary_matrix_with_label = st.session_state['df_for_leontief'].copy()
+                    binary_matrix_with_label.iloc[2:,2:] = binary_matrix
+
+
+                    filtered_matrix_X = st.session_state['df_for_leontief'].copy()
+                    filtered_matrix_X.iloc[2:, 2:] = filtered_matrix_X.iloc[2:, 2:].apply(pd.to_numeric, errors='coerce')*binary_matrix
+
+                    filtered_normalized = st.session_state['df_normalized_with_label']
+                    filtered_normalized.iloc[2:, 2:] = st.session_state['df_normalized_with_label'].iloc[2:, 2:].apply(pd.to_numeric, errors='coerce')*binary_matrix
+
+                    filtered_leontief = st.session_state['df_for_leontief_with_label']
+                    filtered_leontief.iloc[2:, 2:] = st.session_state['df_for_leontief_with_label'].iloc[2:, 2:].apply(pd.to_numeric, errors='coerce')*binary_matrix
+
+                    G_tn = nx.DiGraph()
+
+                    # 모든 노드 가져오기 (고립된 노드 포함)
+                    all_nodes_tn = set(range(filtered_leontief.iloc[2:, 2:].shape[0]))
+                    G_tn.add_nodes_from(all_nodes_tn)  # 모든 노드 추가 (고립 노드 포함)
+
+                    rows_tn, cols_tn = np.where(filtered_leontief.iloc[2:, 2:] != 0)
+                    weights_tn = filtered_leontief.iloc[2:, 2:].to_numpy()[rows_tn, cols_tn]
+                    edges_tn = [(j, i, {'weight': w}) for i, j, w in zip(rows_tn, cols_tn, weights_tn)]
+                    G_tn.add_edges_from(edges_tn)
+
+
+                    tn_df_degree, tn_df_bc, tn_df_cc, tn_df_ev, tn_df_hi,tn_df_kim, tn_gd_in_mean, tn_gd_in_std, tn_gd_out_mean, tn_gd_out_std, tn_bc_mean, tn_bc_std, tn_cc_in_mean, tn_cc_in_std, tn_cc_out_mean, tn_cc_out_std, tn_ev_in_mean, tn_ev_in_std, tn_ev_out_mean, tn_ev_out_std, tn_hub_mean, tn_hub_std, tn_ah_mean, tn_ah_std, tn_const_mean,tn_const_std, tn_eff_mean, tn_eff_std = calculate_network_centralities(G_tn, st.session_state['df_normalized_with_label'],True)
+                    
+                    tbn_df_degree, tbn_df_bc, tbn_df_cc, tbn_df_ev, tbn_df_hi,tbn_df_kim, tbn_gd_in_mean, tbn_gd_in_std, tbn_gd_out_mean, tbn_gd_out_std, tbn_bc_mean, tbn_bc_std, tbn_cc_in_mean, tbn_cc_in_std, tbn_cc_out_mean, tbn_cc_out_std, tbn_ev_in_mean, tbn_ev_in_std, tbn_ev_out_mean, tbn_ev_out_std, tbn_hub_mean, tbn_hub_std, tbn_ah_mean, tbn_ah_std, tbn_const_mean, tbn_const_std, tbn_eff_mean, tbn_eff_std = calculate_network_centralities(G_tn, st.session_state['df_normalized_with_label'],False)
+
+                st.subheader('Threshold 적용 후 Filtered matrices')
+
+                col1, col2, col3, col4 = st.tabs(['Filtered_leontief', 'Binary_matrix','Filtered_matrix','Filtered_Normalized'])
+                with col1:
+                    st.write(filtered_leontief)
+                    st.markdown("##### Threshold 적용 후 네트워크 행렬의 지표")
+                    col1_tn, col2_tn, col3_tn, col4_tn, col5_tn, col6_tn = st.tabs([f"Degree Centrality", 'Betweenness Centrality',"Closeness Centrality", "Eigenvector Centrality", "Hub & Authority", 'constraints&efficiencies'])
+                    with col1_tn:
+                        st.dataframe(tn_df_degree)
+                        st.write("In-Degree: Mean =", tn_gd_in_mean, ", Std =", tn_gd_in_std)
+                        st.write("Out-Degree: Mean =", tn_gd_out_mean, ", Std =", tn_gd_out_std)
+                    
+                    with col2_tn:
+                        st.dataframe(
+                            tn_df_bc,
+                            column_config={'Betweenness Centrality': st.column_config.NumberColumn('Betweenness Centrality', format='%.12f')}
+                        )
+                        st.write("Betweenness Centrality: Mean =", tn_bc_mean, ", Std =", tn_bc_std)
+                    
+                    with col3_tn:
+                        st.dataframe(
+                            tn_df_cc,
+                            column_config={
+                                'Indegree_Closeness Centrality': st.column_config.NumberColumn('Indegree_Closeness Centrality', format='%.12f'),
+                                'Outdegree_Closeness Centrality': st.column_config.NumberColumn('Outdegree_Closeness Centrality', format='%.12f')
+                            }
+                        )
+                        st.write("Indegree Closeness Centrality: Mean =", tn_cc_in_mean, ", Std =", tn_cc_in_std)
+                        st.write("Outdegree Closeness Centrality: Mean =", tn_cc_out_mean, ", Std =", tn_cc_out_std)
+                    
+                    with col4_tn:
+                        st.dataframe(
+                            tn_df_ev,
+                            column_config={
+                                'Indegree_Eigenvector Centrality': st.column_config.NumberColumn('Indegree_Eigenvector Centrality', format='%.12f'),
+                                'Outdegree_Eigenvector Centrality': st.column_config.NumberColumn('Outdegree_Eigenvector Centrality', format='%.12f')
+                            }
+                        )
+                        st.write("Indegree Eigenvector Centrality: Mean =", tn_ev_in_mean, ", Std =", tn_ev_in_std)
+                        st.write("Outdegree Eigenvector Centrality: Mean =", tn_ev_out_mean, ", Std =", tn_ev_out_std)
+                    
+                    with col5_tn:
+                        st.dataframe(
+                            tn_df_hi,
+                            column_config={
+                                'HITS Hubs': st.column_config.NumberColumn('HITS Hubs', format='%.12f'),
+                                'HITS Authorities': st.column_config.NumberColumn('HITS Authorities', format='%.12f')
+                            }
+                        )
+                        st.write("HITS Hubs: Mean =", tn_hub_mean, ", Std =", tn_hub_std)
+                        st.write("HITS Authorities: Mean =", tn_ah_mean, ", Std =", tn_ah_std)
+
+                    with col6_tn:
+                        st.dataframe(
+                            tn_df_kim,
+                            column_config={
+                                'Constraint factor': st.column_config.NumberColumn('Constraint factor', format='%.12f'),
+                                'Efficiency factor': st.column_config.NumberColumn('Efficiency factor', format='%.12f')
+                            }
+                        )
+                        st.write("Constraint factor: Mean =", tn_const_mean, ", Std =", tn_const_std)
+                        st.write("Efficiency factor: Mean =", tn_eff_mean, ", Std =", tn_eff_std)
+
+                with col2:
+                    st.write(binary_matrix_with_label)
+                    # 1. 노드 이름(A, B, C01, ...) 리스트로 추출
+                    #    binary_matrix_with_label 의 2번째 행부터 첫 번째 열(0번) 값을 가져옵니다.
+                    node_names_tn = binary_matrix_with_label.iloc[2:, 0].tolist()
+
+                    # 2. 레이아웃 계산
+                    pos_tn = nx.spring_layout(G_tn, seed=42)
+
+                    # 3. 시각화
+                    fig_tn, ax_tn = plt.subplots(figsize=(8, 6))
+                    nx.draw_networkx_nodes(G_tn, pos_tn, node_size=400, ax=ax_tn)
+                    nx.draw_networkx_edges(G_tn, pos_tn, arrowstyle='->', arrowsize=10, ax=ax_tn)
+
+                    # 4. 레이블 매핑 (노드 번호 → 실제 이름)
+                    label_dict_tn = {i: name for i, name in enumerate(node_names_tn)}
+
+                    # 5. 레이블 그리기
+                    nx.draw_networkx_labels(G_tn, pos_tn, labels=label_dict_tn, font_size=10, ax=ax_tn)
+
+                    ax_tn.set_title("Thresholded Binary Network (TBN)", fontsize=14)
+                    ax_tn.axis('off')
+                    st.pyplot(fig_tn)
+
+                    st.markdown("##### 이진 방향성 네트워크 행렬의 지표")
+                    col1_tbn, col2_tbn, col3_tbn, col4_tbn, col5_tbn, col6_tbn = st.tabs([f"Degree Centrality", 'Betweenness Centrality',"Closeness Centrality", "Eigenvector Centrality", "Hub & Authority", "constraints&efficiencies"])
+                    with col1_tbn:
+                        st.dataframe(tbn_df_degree)
+                        st.write("In-Degree: Mean =", tbn_gd_in_mean, ", Std =", tbn_gd_in_std)
+                        st.write("Out-Degree: Mean =", tbn_gd_out_mean, ", Std =", tbn_gd_out_std)
+                    
+                    with col2_tbn:
+                        st.dataframe(
+                            tbn_df_bc,
+                            column_config={'Betweenness Centrality': st.column_config.NumberColumn('Betweenness Centrality', format='%.12f')}
+                        )
+                        st.write("Betweenness Centrality: Mean =", tbn_bc_mean, ", Std =", tbn_bc_std)
+                    
+                    with col3_tbn:
+                        st.dataframe(
+                            tbn_df_cc,
+                            column_config={
+                                'Indegree_Closeness Centrality': st.column_config.NumberColumn('Indegree_Closeness Centrality', format='%.12f'),
+                                'Outdegree_Closeness Centrality': st.column_config.NumberColumn('Outdegree_Closeness Centrality', format='%.12f')
+                            }
+                        )
+                        st.write("Indegree Closeness Centrality: Mean =", tbn_cc_in_mean, ", Std =", tbn_cc_in_std)
+                        st.write("Outdegree Closeness Centrality: Mean =", tbn_cc_out_mean, ", Std =", tbn_cc_out_std)
+                    
+                    with col4_tbn:
+                        st.dataframe(
+                            tbn_df_ev,
+                            column_config={
+                                'Indegree_Eigenvector Centrality': st.column_config.NumberColumn('Indegree_Eigenvector Centrality', format='%.12f'),
+                                'Outdegree_Eigenvector Centrality': st.column_config.NumberColumn('Outdegree_Eigenvector Centrality', format='%.12f')
+                            }
+                        )
+                        st.write("Indegree Eigenvector Centrality: Mean =", tbn_ev_in_mean, ", Std =", tbn_ev_in_std)
+                        st.write("Outdegree Eigenvector Centrality: Mean =", tbn_ev_out_mean, ", Std =", tbn_ev_out_std)
+                    
+                    with col5_tbn:
+                        st.dataframe(
+                            tbn_df_hi,
+                            column_config={
+                                'HITS Hubs': st.column_config.NumberColumn('HITS Hubs', format='%.12f'),
+                                'HITS Authorities': st.column_config.NumberColumn('HITS Authorities', format='%.12f')
+                            }
+                        )
+                        st.write("HITS Hubs: Mean =", tbn_hub_mean, ", Std =", tbn_hub_std)
+                        st.write("HITS Authorities: Mean =", tbn_ah_mean, ", Std =", tbn_ah_std)
+
+                    with col6_tbn:
+                        st.dataframe(
+                            tbn_df_kim,
+                            column_config={
+                                'Constraint factor': st.column_config.NumberColumn('Constraint factor', format='%.12f'),
+                                'Efficiency factor': st.column_config.NumberColumn('Efficiency factor', format='%.12f')
+                            }
+                        )
+                        st.write("Constraint factor: Mean =", tbn_const_mean, ", Std =", tbn_const_std)
+                        st.write("Efficiency factor: Mean =", tbn_eff_mean, ", Std =", tbn_eff_std)
+                with col3:
+                    st.write(filtered_matrix_X)
+                with col4:
+                    st.write(filtered_normalized)
+
+
+                with st.sidebar.expander(f"filtered file(threshold:{st.session_state.threshold})"):
+                    threshold_original = {
+                    "threshold_original_degree_centrality": tn_df_degree,
+                    "threshold_original_betweenness_centrality": tn_df_bc,
+                    "threshold_original_closeness_centrality": tn_df_cc,
+                    "threshold_original_eigenvector_centrality": tn_df_ev,
+                    "threshold_original_hits": tn_df_hi,
+                    "threshold_original_constraints&efficiencies": tn_df_kim
+                                            }
+                    threshold_bn = {
+                    "threshold_bn_degree_centrality": tbn_df_degree,
+                    "threshold_bn_betweenness_centrality": tbn_df_bc,
+                    "threshold_bn_closeness_centrality": tbn_df_cc,
+                    "threshold_bn_eigenvector_centrality": tbn_df_ev,
+                    "threshold_bn_hits": tbn_df_hi,
+                    "threshold_bn_constraints&efficiencies": tbn_df_kim
+                                            }
+                    
+                    # 모든 결과를 한 dict으로 합치기
+                    all_threshold = {
+                        "filtered_leontief(threshold)":        filtered_leontief,
+                        **threshold_original,
+                        "binary_matrix(threshold)":            binary_matrix_with_label,
+                        **threshold_bn,
+                        "filtered_matrix_X(threshold)":        filtered_matrix_X,
+                        "filtered_normalized(threshold)":      filtered_normalized
+                    }
+                    # ZIP으로 한 번에 다운로드
+                    download_multiple_csvs_as_zip(
+                        all_threshold,
+                        zip_name="threshold 적용 전체 결과들(zip)"
+                    )
+                    donwload_data(filtered_leontief, 'filtered_leontief(threshold)')
+                    download_multiple_csvs_as_zip(threshold_original, zip_name="threshold 적용 네트워크의 지표들(zip)")
+                    donwload_data(binary_matrix_with_label, 'binary_matrix(threshold)')
+                    download_multiple_csvs_as_zip(threshold_bn, zip_name="threshold 적용 BN 네트워크의 지표들(zip)")
+                    donwload_data(filtered_matrix_X, 'filtered_matrix_X(threshold)')
+                    donwload_data(filtered_normalized, 'filtered_normalized(threshold)')
 
         else:
             # -----------------------------------------------------------------
@@ -1109,264 +1390,7 @@ def main():
 
 
 
-        if method_option.startswith("Method 1"):
-            st.info("📊 **Method 1 분석 결과 (Threshold Filtering)**")
-            st.write("🔹 이 방식은 임계값(Threshold)을 기준으로 중요하지 않은 연결을 제거하여 핵심 네트워크를 추출합니다.")
-            st.caption("👉 아래 그래프를 참고하여 적절한 임계값을 설정하고 '노드 생존비율'을 확인하세요.")
 
-            st.subheader('threshold에 따른 생존비율 그래프')
-
-            # 그래프 그리기 (데이터가 준비되어 있다고 가정)
-            if 'df_for_leontief_with_label' in st.session_state:
-                 # 인터랙티브 섹션: 그래프와 텍스트(추천값) 모두 표시
-                 _, iter_fig, iter_txt = threshold_count(st.session_state['df_for_leontief_with_label'].iloc[2:, 2:])
-                 st.pyplot(iter_fig) # 그래프 출력
-                 st.markdown(iter_txt) # 추천 임계값 텍스트 출력
-
-            col1, col2 = st.columns(2)
-            with col1:
-                # 텍스트 입력창 (여기서 입력받은 값은 버튼 누르기 전까지는 지역변수에만 저장됨)
-                input_val = st.text_input('threshold를 입력하세요', '0.000') 
-                threshold_val = float(input_val) if input_val else 0.0
-
-            with col2:
-                if st.button('Apply threshold'):
-                    # 버튼을 눌러야만 비로소 session_state에 등록되어 아래 결과창이 열림
-                    st.session_state.threshold = threshold_val
-                    st.session_state.threshold_cal = True
-
-
-        if 'threshold' in st.session_state and st.session_state.show_edited:
-            if st.session_state.threshold_cal:
-                # binary matrix 생성
-                binary_matrix = make_binary_matrix(st.session_state['df_for_leontief_with_label'].iloc[2:, 2:].apply(pd.to_numeric, errors='coerce'), st.session_state.threshold)
-                _, binary_matrix = separate_diagonals(binary_matrix)
-                binary_matrix_with_label = st.session_state['df_for_leontief'].copy()
-                binary_matrix_with_label.iloc[2:,2:] = binary_matrix
-
-
-                filtered_matrix_X = st.session_state['df_for_leontief'].copy()
-                filtered_matrix_X.iloc[2:, 2:] = filtered_matrix_X.iloc[2:, 2:].apply(pd.to_numeric, errors='coerce')*binary_matrix
-
-                filtered_normalized = st.session_state['df_normalized_with_label']
-                filtered_normalized.iloc[2:, 2:] = st.session_state['df_normalized_with_label'].iloc[2:, 2:].apply(pd.to_numeric, errors='coerce')*binary_matrix
-
-                filtered_leontief = st.session_state['df_for_leontief_with_label']
-                filtered_leontief.iloc[2:, 2:] = st.session_state['df_for_leontief_with_label'].iloc[2:, 2:].apply(pd.to_numeric, errors='coerce')*binary_matrix
-
-                G_tn = nx.DiGraph()
-
-                # 모든 노드 가져오기 (고립된 노드 포함)
-                all_nodes_tn = set(range(filtered_leontief.iloc[2:, 2:].shape[0]))
-                G_tn.add_nodes_from(all_nodes_tn)  # 모든 노드 추가 (고립 노드 포함)
-
-                rows_tn, cols_tn = np.where(filtered_leontief.iloc[2:, 2:] != 0)
-                weights_tn = filtered_leontief.iloc[2:, 2:].to_numpy()[rows_tn, cols_tn]
-                edges_tn = [(j, i, {'weight': w}) for i, j, w in zip(rows_tn, cols_tn, weights_tn)]
-                G_tn.add_edges_from(edges_tn)
-
-
-                tn_df_degree, tn_df_bc, tn_df_cc, tn_df_ev, tn_df_hi,tn_df_kim, tn_gd_in_mean, tn_gd_in_std, tn_gd_out_mean, tn_gd_out_std, tn_bc_mean, tn_bc_std, tn_cc_in_mean, tn_cc_in_std, tn_cc_out_mean, tn_cc_out_std, tn_ev_in_mean, tn_ev_in_std, tn_ev_out_mean, tn_ev_out_std, tn_hub_mean, tn_hub_std, tn_ah_mean, tn_ah_std, tn_const_mean,tn_const_std, tn_eff_mean, tn_eff_std = calculate_network_centralities(G_tn, st.session_state['df_normalized_with_label'],True)
-                
-                tbn_df_degree, tbn_df_bc, tbn_df_cc, tbn_df_ev, tbn_df_hi,tbn_df_kim, tbn_gd_in_mean, tbn_gd_in_std, tbn_gd_out_mean, tbn_gd_out_std, tbn_bc_mean, tbn_bc_std, tbn_cc_in_mean, tbn_cc_in_std, tbn_cc_out_mean, tbn_cc_out_std, tbn_ev_in_mean, tbn_ev_in_std, tbn_ev_out_mean, tbn_ev_out_std, tbn_hub_mean, tbn_hub_std, tbn_ah_mean, tbn_ah_std, tbn_const_mean, tbn_const_std, tbn_eff_mean, tbn_eff_std = calculate_network_centralities(G_tn, st.session_state['df_normalized_with_label'],False)
-
-            # [UI Style Matching] Common Output과 유사한 구조로 변경
-            st.write(f"**현재 적용된 임계값:** {st.session_state.threshold}")
-            
-            col_res1, col_res2 = st.tabs(["가중치 네트워크(Weighted)", "이진 네트워크(Binary)"])
-            with col_res1:
-                st.dataframe(filtered_leontief)
-            with col_res2:
-                st.dataframe(binary_matrix_with_label)
-
-            st.subheader('Threshold 적용 후 Filtered matrices 상세 분석')
-
-            col1, col2, col3, col4 = st.tabs(['Filtered_leontief (Raw)', 'Binary_matrix (Raw)','Filtered_matrix (Raw)','Filtered_Normalized (Raw)'])
-            with col1:
-                st.write(filtered_leontief)
-                st.markdown("##### Threshold 적용 후 네트워크 행렬의 지표")
-                col1_tn, col2_tn, col3_tn, col4_tn, col5_tn, col6_tn = st.tabs([f"Degree Centrality", 'Betweenness Centrality',"Closeness Centrality", "Eigenvector Centrality", "Hub & Authority", 'constraints&efficiencies'])
-                with col1_tn:
-                    st.dataframe(tn_df_degree)
-                    st.write("In-Degree: Mean =", tn_gd_in_mean, ", Std =", tn_gd_in_std)
-                    st.write("Out-Degree: Mean =", tn_gd_out_mean, ", Std =", tn_gd_out_std)
-                
-                with col2_tn:
-                    st.dataframe(
-                        tn_df_bc,
-                        column_config={'Betweenness Centrality': st.column_config.NumberColumn('Betweenness Centrality', format='%.12f')}
-                    )
-                    st.write("Betweenness Centrality: Mean =", tn_bc_mean, ", Std =", tn_bc_std)
-                
-                with col3_tn:
-                    st.dataframe(
-                        tn_df_cc,
-                        column_config={
-                            'Indegree_Closeness Centrality': st.column_config.NumberColumn('Indegree_Closeness Centrality', format='%.12f'),
-                            'Outdegree_Closeness Centrality': st.column_config.NumberColumn('Outdegree_Closeness Centrality', format='%.12f')
-                        }
-                    )
-                    st.write("Indegree Closeness Centrality: Mean =", tn_cc_in_mean, ", Std =", tn_cc_in_std)
-                    st.write("Outdegree Closeness Centrality: Mean =", tn_cc_out_mean, ", Std =", tn_cc_out_std)
-                
-                with col4_tn:
-                    st.dataframe(
-                        tn_df_ev,
-                        column_config={
-                            'Indegree_Eigenvector Centrality': st.column_config.NumberColumn('Indegree_Eigenvector Centrality', format='%.12f'),
-                            'Outdegree_Eigenvector Centrality': st.column_config.NumberColumn('Outdegree_Eigenvector Centrality', format='%.12f')
-                        }
-                    )
-                    st.write("Indegree Eigenvector Centrality: Mean =", tn_ev_in_mean, ", Std =", tn_ev_in_std)
-                    st.write("Outdegree Eigenvector Centrality: Mean =", tn_ev_out_mean, ", Std =", tn_ev_out_std)
-                
-                with col5_tn:
-                    st.dataframe(
-                        tn_df_hi,
-                        column_config={
-                            'HITS Hubs': st.column_config.NumberColumn('HITS Hubs', format='%.12f'),
-                            'HITS Authorities': st.column_config.NumberColumn('HITS Authorities', format='%.12f')
-                        }
-                    )
-                    st.write("HITS Hubs: Mean =", tn_hub_mean, ", Std =", tn_hub_std)
-                    st.write("HITS Authorities: Mean =", tn_ah_mean, ", Std =", tn_ah_std)
-
-                with col6_tn:
-                    st.dataframe(
-                        tn_df_kim,
-                        column_config={
-                            'Constraint factor': st.column_config.NumberColumn('Constraint factor', format='%.12f'),
-                            'Efficiency factor': st.column_config.NumberColumn('Efficiency factor', format='%.12f')
-                        }
-                    )
-                    st.write("Constraint factor: Mean =", tn_const_mean, ", Std =", tn_const_std)
-                    st.write("Efficiency factor: Mean =", tn_eff_mean, ", Std =", tn_eff_std)
-
-            with col2:
-                st.write(binary_matrix_with_label)
-                # 1. 노드 이름(A, B, C01, ...) 리스트로 추출
-                #    binary_matrix_with_label 의 2번째 행부터 첫 번째 열(0번) 값을 가져옵니다.
-                node_names_tn = binary_matrix_with_label.iloc[2:, 0].tolist()
-
-                # 2. 레이아웃 계산
-                pos_tn = nx.spring_layout(G_tn, seed=42)
-
-                # 3. 시각화
-                fig_tn, ax_tn = plt.subplots(figsize=(8, 6))
-                nx.draw_networkx_nodes(G_tn, pos_tn, node_size=400, ax=ax_tn)
-                nx.draw_networkx_edges(G_tn, pos_tn, arrowstyle='->', arrowsize=10, ax=ax_tn)
-
-                # 4. 레이블 매핑 (노드 번호 → 실제 이름)
-                label_dict_tn = {i: name for i, name in enumerate(node_names_tn)}
-
-                # 5. 레이블 그리기
-                nx.draw_networkx_labels(G_tn, pos_tn, labels=label_dict_tn, font_size=10, ax=ax_tn)
-
-                ax_tn.set_title("Thresholded Binary Network (TBN)", fontsize=14)
-                ax_tn.axis('off')
-                st.pyplot(fig_tn)
-
-                st.markdown("##### 이진 방향성 네트워크 행렬의 지표")
-                col1_tbn, col2_tbn, col3_tbn, col4_tbn, col5_tbn, col6_tbn = st.tabs([f"Degree Centrality", 'Betweenness Centrality',"Closeness Centrality", "Eigenvector Centrality", "Hub & Authority", "constraints&efficiencies"])
-                with col1_tbn:
-                    st.dataframe(tbn_df_degree)
-                    st.write("In-Degree: Mean =", tbn_gd_in_mean, ", Std =", tbn_gd_in_std)
-                    st.write("Out-Degree: Mean =", tbn_gd_out_mean, ", Std =", tbn_gd_out_std)
-                
-                with col2_tbn:
-                    st.dataframe(
-                        tbn_df_bc,
-                        column_config={'Betweenness Centrality': st.column_config.NumberColumn('Betweenness Centrality', format='%.12f')}
-                    )
-                    st.write("Betweenness Centrality: Mean =", tbn_bc_mean, ", Std =", tbn_bc_std)
-                
-                with col3_tbn:
-                    st.dataframe(
-                        tbn_df_cc,
-                        column_config={
-                            'Indegree_Closeness Centrality': st.column_config.NumberColumn('Indegree_Closeness Centrality', format='%.12f'),
-                            'Outdegree_Closeness Centrality': st.column_config.NumberColumn('Outdegree_Closeness Centrality', format='%.12f')
-                        }
-                    )
-                    st.write("Indegree Closeness Centrality: Mean =", tbn_cc_in_mean, ", Std =", tbn_cc_in_std)
-                    st.write("Outdegree Closeness Centrality: Mean =", tbn_cc_out_mean, ", Std =", tbn_cc_out_std)
-                
-                with col4_tbn:
-                    st.dataframe(
-                        tbn_df_ev,
-                        column_config={
-                            'Indegree_Eigenvector Centrality': st.column_config.NumberColumn('Indegree_Eigenvector Centrality', format='%.12f'),
-                            'Outdegree_Eigenvector Centrality': st.column_config.NumberColumn('Outdegree_Eigenvector Centrality', format='%.12f')
-                        }
-                    )
-                    st.write("Indegree Eigenvector Centrality: Mean =", tbn_ev_in_mean, ", Std =", tbn_ev_in_std)
-                    st.write("Outdegree Eigenvector Centrality: Mean =", tbn_ev_out_mean, ", Std =", tbn_ev_out_std)
-                
-                with col5_tbn:
-                    st.dataframe(
-                        tbn_df_hi,
-                        column_config={
-                            'HITS Hubs': st.column_config.NumberColumn('HITS Hubs', format='%.12f'),
-                            'HITS Authorities': st.column_config.NumberColumn('HITS Authorities', format='%.12f')
-                        }
-                    )
-                    st.write("HITS Hubs: Mean =", tbn_hub_mean, ", Std =", tbn_hub_std)
-                    st.write("HITS Authorities: Mean =", tbn_ah_mean, ", Std =", tbn_ah_std)
-
-                with col6_tbn:
-                    st.dataframe(
-                        tbn_df_kim,
-                        column_config={
-                            'Constraint factor': st.column_config.NumberColumn('Constraint factor', format='%.12f'),
-                            'Efficiency factor': st.column_config.NumberColumn('Efficiency factor', format='%.12f')
-                        }
-                    )
-                    st.write("Constraint factor: Mean =", tbn_const_mean, ", Std =", tbn_const_std)
-                    st.write("Efficiency factor: Mean =", tbn_eff_mean, ", Std =", tbn_eff_std)
-            with col3:
-                st.write(filtered_matrix_X)
-            with col4:
-                st.write(filtered_normalized)
-
-
-            with st.sidebar.expander(f"filtered file(threshold:{st.session_state.threshold})"):
-                threshold_original = {
-                "threshold_original_degree_centrality": tn_df_degree,
-                "threshold_original_betweenness_centrality": tn_df_bc,
-                "threshold_original_closeness_centrality": tn_df_cc,
-                "threshold_original_eigenvector_centrality": tn_df_ev,
-                "threshold_original_hits": tn_df_hi,
-                "threshold_original_constraints&efficiencies": tn_df_kim
-                                        }
-                threshold_bn = {
-                "threshold_bn_degree_centrality": tbn_df_degree,
-                "threshold_bn_betweenness_centrality": tbn_df_bc,
-                "threshold_bn_closeness_centrality": tbn_df_cc,
-                "threshold_bn_eigenvector_centrality": tbn_df_ev,
-                "threshold_bn_hits": tbn_df_hi,
-                "threshold_bn_constraints&efficiencies": tbn_df_kim
-                                        }
-                
-                # 모든 결과를 한 dict으로 합치기
-                all_threshold = {
-                    "filtered_leontief(threshold)":        filtered_leontief,
-                    **threshold_original,
-                    "binary_matrix(threshold)":            binary_matrix_with_label,
-                    **threshold_bn,
-                    "filtered_matrix_X(threshold)":        filtered_matrix_X,
-                    "filtered_normalized(threshold)":      filtered_normalized
-                }
-                # ZIP으로 한 번에 다운로드
-                download_multiple_csvs_as_zip(
-                    all_threshold,
-                    zip_name="threshold 적용 전체 결과들(zip)"
-                )
-                donwload_data(filtered_leontief, 'filtered_leontief(threshold)')
-                download_multiple_csvs_as_zip(threshold_original, zip_name="threshold 적용 네트워크의 지표들(zip)")
-                donwload_data(binary_matrix_with_label, 'binary_matrix(threshold)')
-                download_multiple_csvs_as_zip(threshold_bn, zip_name="threshold 적용 BN 네트워크의 지표들(zip)")
-                donwload_data(filtered_matrix_X, 'filtered_matrix_X(threshold)')
-                donwload_data(filtered_normalized, 'filtered_normalized(threshold)')
 
     
             # [공통] 필요한 곳에 한 번만 넣어 두세요

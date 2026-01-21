@@ -315,13 +315,12 @@ def get_mid_ID_idx(df, first_idx):
         col_cnt += 1
         col_sum += v
     
-    # row_cnt is calculated by iterating the first row -> it is the number of COLUMNS (Width)
-    # col_cnt is calculated by iterating the first column -> it is the number of ROWS (Height)
-    
-    # Return tuple of (End Row Index, End Col Index)
-    # End Row Index = Start Row + Height (col_cnt)
-    # End Col Index = Start Col + Width (row_cnt)
-    return (first_idx[0]+col_cnt, first_idx[1]+row_cnt)
+    if row_cnt == col_cnt:
+        size = row_cnt
+    else:
+        size = max(row_cnt, col_cnt)
+
+    return (first_idx[0]+size, first_idx[1]+size)
 
 def insert_row_and_col(df, first_idx, mid_ID_idx, code, name, num_of_label):
     df_editing = df.copy()
@@ -368,44 +367,77 @@ def transfer_to_new_sector(df, first_idx, origin_code, target_code, ratio, code_
     msg = f'{ratio*100}% of {origin_code} has been moved to {target_code}.'
     return df_editing, msg
 
-def remove_zero_series(df, first_idx, mid_ID_idx):
-    df_editing = df.copy()
-    df_test = df_editing.copy()
-    df_test = df_editing.iloc[first_idx[0]:, first_idx[1]:].apply(pd.to_numeric, errors='coerce')
-    zero_row_indices = df_test.index[(df_test == 0).all(axis=1)].tolist()
-    zero_row_indices = [item for item in zero_row_indices if item>=first_idx[0] and item<=mid_ID_idx[0]]
-    zero_col_indices = list(map(lambda x: x - first_idx[0] + first_idx[1], zero_row_indices))
-    df_editing.drop(zero_row_indices, inplace=True)
-    df_editing.drop(zero_col_indices, inplace=True, axis=1)
-    df_editing.columns = range(df_editing.shape[1])
-    df_editing.index = range(df_editing.shape[0])
-    count = len(zero_col_indices)
-    msg = f'{count}개의 행(열)이 삭제되었습니다.'
-    mid_ID_idx = (mid_ID_idx[0] - count, mid_ID_idx[1] - count)
-    return df_editing, msg, mid_ID_idx, zero_row_indices
+def remove_zero_series(
+    df: pd.DataFrame,
+    first_idx: tuple[int, int],
+    mid_ID_idx: tuple[int, int],
+    remove_positions: dict | None = None,
+):
+    """
+    - remove_positions가 None이면: 기존 로직대로 '0으로만 이뤄진 행'을 찾아 (대응되는 열)까지 삭제
+    - remove_positions가 주어지면: 해당 위치만 삭제
 
-def drop_rows_and_cols(df, first_idx, mid_ID_idx, zero_row_indices):
+    remove_positions / return_positions 형식(동일):
+      {
+        "zero_row_indices": [ ... ],   # df의 원본 index 기준 (drop에 바로 쓰는 값)
+        "zero_col_indices": [ ... ],   # df의 원본 column index 기준 (drop에 바로 쓰는 값)
+      }
+
+    return:
+      df_editing, msg, mid_ID_idx, removed_positions
     """
-    특정 인덱스(zero_row_indices)에 해당하는 행과 열을 강제 삭제
-    """
+
     df_editing = df.copy()
-    zero_col_indices = list(map(lambda x: x - first_idx[0] + first_idx[1], zero_row_indices))
-    
-    # 존재하지 않는 인덱스는 무시 (안전장치)
-    valid_rows = [x for x in zero_row_indices if x in df_editing.index]
-    valid_cols = [x for x in zero_col_indices if x in df_editing.columns]
-    
-    df_editing.drop(valid_rows, inplace=True)
-    df_editing.drop(valid_cols, inplace=True, axis=1)
-    
+
+    # -------------------------
+    # 1) 삭제 위치 결정
+    # -------------------------
+    if remove_positions is None:
+        # 기존 로직: first_idx 이후 블록을 숫자로 보고, 행 전체가 0인 행 찾기
+        df_test = df_editing.iloc[first_idx[0]:, first_idx[1]:].apply(pd.to_numeric, errors="coerce")
+
+        zero_row_indices = df_test.index[(df_test == 0).all(axis=1)].tolist()
+        zero_row_indices = [i for i in zero_row_indices if first_idx[0] <= i <= mid_ID_idx[0]]
+
+        # 기존 로직: row index -> 대응되는 col index 매핑
+        zero_col_indices = [i - first_idx[0] + first_idx[1] for i in zero_row_indices]
+
+        removed_positions = {
+            "zero_row_indices": zero_row_indices,
+            "zero_col_indices": zero_col_indices,
+        }
+
+    else:
+        # 주어진 삭제 위치 사용 (형식 동일)
+        removed_positions = {
+            "zero_row_indices": list(remove_positions.get("zero_row_indices", [])),
+            "zero_col_indices": list(remove_positions.get("zero_col_indices", [])),
+        }
+
+    zero_row_indices = removed_positions["zero_row_indices"]
+    zero_col_indices = removed_positions["zero_col_indices"]
+
+    # -------------------------
+    # 2) 삭제 수행
+    # -------------------------
+    if len(zero_row_indices) > 0:
+        df_editing.drop(zero_row_indices, inplace=True)
+
+    if len(zero_col_indices) > 0:
+        df_editing.drop(zero_col_indices, inplace=True, axis=1)
+
+    # index/columns 리셋(너 기존 코드 유지)
     df_editing.columns = range(df_editing.shape[1])
     df_editing.index = range(df_editing.shape[0])
-    
-    count = len(valid_rows)
-    msg = f'동기화: {count}개의 행(열)이 강제 삭제되었습니다.'
+
+    # -------------------------
+    # 3) mid_ID_idx 업데이트 + msg
+    # -------------------------
+    count = len(zero_col_indices)  # 기존 로직: 삭제한 열 개수만큼 mid_ID_idx 줄임
+    msg = f"{count}개의 행(열)이 삭제되었습니다."
     mid_ID_idx = (mid_ID_idx[0] - count, mid_ID_idx[1] - count)
-    
-    return df_editing, msg, mid_ID_idx
+
+    return df_editing, msg, mid_ID_idx, removed_positions
 
 def donwload_data(df, file_name):
     csv = convert_df(df)
@@ -684,13 +716,13 @@ def threshold_count(matrix):
         ax2.plot(w_x_values, w, color=color2, linestyle='--', alpha=0.5, label='w: Slope Stability')
         ax2.tick_params(axis='y', labelcolor=color2)
 
-    # [Indicator 1] Stability Criterion (Old Method 2) - 회색 수직선
+    # [Indicator 1] Method 2 (Stability) - 회색 수직선
     ax1.axvline(x=threshold_method2, color='gray', linestyle='-.', alpha=0.6,
-                label=f'Stability Criterion: {threshold_method2:.4f}')
+                label=f'Method 2 (Stable): {threshold_method2:.4f}')
 
-    # [Indicator 2] Distance Min Criterion (Old Method 2-1) - 빨간 점 (원래의 수학적 최적점)
+    # [Indicator 2] Method 2-1 (Distance Min) - 빨간 점 (원래의 수학적 최적점)
     ax1.plot(threshold_dist, min_y, 'ro', markersize=8, alpha=0.6,
-             label=f'Distance Min Criterion: {threshold_dist:.4f}')
+             label=f'Method 2-1 (Dist Min): {threshold_dist:.4f}')
 
     # [Indicator 3] Final Decision (No Isolated) - 초록색 별/X (최종 결정)
     # 조정이 발생했다면 화살표와 함께 표시
@@ -715,29 +747,27 @@ def threshold_count(matrix):
 
     plt.title('Threshold Optimization: Distance Min + Connectivity Check')
     fig.tight_layout()
-    # st.pyplot(fig)  <-- REMOVED
+    st.pyplot(fig)
     
     # -------------------------------------------------------------------------
     # 5. 결과 반환 및 설명
     # -------------------------------------------------------------------------
     msg_adjustment = ""
     if adjusted:
-        msg_adjustment = f"⚠️ 수학적 최적점(`{threshold_dist:.4f}`)에서 고립 노드가 발견되어, `{final_threshold:.4f}`로 하향 조정했습니다."
+        msg_adjustment = f"⚠️ 수학적 최적점(`{threshold_dist:.4f}`)에서 고립 노드가 발견되어, `{final_threshold:.4f}` 로 하향 조정했습니다."
     else:
         msg_adjustment = f"✅ 수학적 최적점(`{threshold_dist:.4f}`)이 고립 노드 없이 안정적입니다."
 
-    report_text = f"""
+    st.markdown(f"""
     **최적 임계값 분석 결과**
-    - **Stability Criterion**: `{threshold_method2:.4f}`
-    - **Distance Min Criterion**: `{threshold_dist:.4f}` (Backtracking 시작점)
-    - **Final Decision**: `{final_threshold:.4f}`
+    - **Stability Criterion:** `{threshold_method2:.4f}`
+    - **Distance Min Criterion:** `{threshold_dist:.4f}` (Backtracking 시작점)
+    - **Final Decision:** `{final_threshold:.4f}`
     
     {msg_adjustment}
-    """
+    """)
     
-    # st.markdown(report_text) <-- REMOVED
-    
-    return final_threshold, fig, report_text
+    return final_threshold
 
 @st.cache_data
 def threshold_count_2(matrix):
@@ -856,26 +886,24 @@ def threshold_count_2(matrix):
 
     plt.title(f'Method A Convergence: Stopped at k={final_k}')
     fig.tight_layout()
-    # st.pyplot(fig) <-- REMOVED (Return it instead)
+    st.pyplot(fig)
 
     # -------------------------------------------------------------------------
     # 3. 사용자 선택 UI / 결과 안내
     # -------------------------------------------------------------------------
     status_msg = "수렴 완료 (Converged)" if converged else "최대 반복 도달 (Max Iter)"
 
-    report_text = f"""
+    st.markdown(f"""
     **Method A 추출 결과**
-    - **최종 반복 횟수 (k)**: `{final_k}` ({status_msg})
-    - **최종 누적 정보량 (s0)**: `{s_accum:.4f}`
-    - **마지막 변화율**: `{ratio_list[-1]:.4f}` (목표: $\le {epsilon}$)
+    - **최종 반복 횟수 (k):** `{final_k}` ({status_msg})
+    - **최종 누적 정보량 (s0):** `{s_accum:.4f}`
+    - **마지막 변화율:** `{ratio_list[-1]:.4f}` (목표: $\le {epsilon}$)
     
     💡 **설명:** 행렬의 거듭제곱($A^k$)을 통해 간접 연결을 탐색하며, 정보량 증가분이 {epsilon*100}% 이하가 될 때까지 네트워크를 누적했습니다.
-    """
-    
-    # st.markdown(report_text) <-- REMOVED
+    """)
 
     # 사용자가 원하는 network(행렬) 자체를 반환
-    return N_accum, fig, report_text
+    return N_accum
 
 def calculate_kim_metrics(G, weight='weight'):
     """
@@ -984,7 +1012,7 @@ def build_leontief_outputs(
     # 2) A(tmp) 만들기: 숫자 변환 + 열 정규화 (너 코드 동일)
     tmp = df_without_label.copy()
     tmp = tmp.apply(pd.to_numeric, errors="coerce")
-    tmp = tmp.divide(normalization_denominator_replaced.values, axis=1)
+    tmp = tmp.divide(normalization_denominator_replaced, axis=1)
 
     # A를 with_label에 반영 (너 코드 동일)
     df_with_label.iloc[2:, 2:] = tmp
@@ -1175,9 +1203,7 @@ def replay_edit_ops_on_df(
     transfer_to_new_sector_fn,
     remove_zero_series_fn,
     reduce_negative_values_fn,
-
-    drop_rows_and_cols_fn=None, # New dependency
-    batch_apply_fn=None,
+    batch_apply_fn=None,          # apply_batch_edit 같은 함수 주입
     copy_ids: bool = False,       # ids_simbol 공유 싫으면 True
     return_log: bool = True,      # 디버깅/기록용 로그 반환
 ):
@@ -1258,24 +1284,9 @@ def replay_edit_ops_on_df(
         # 3) 0인 행/열 삭제 (remove_zero_series)
         # -------------------------
         elif t == "remove_zero":
-            result = remove_zero_series_fn(df, first_idx, mid)
+            result = remove_zero_series_fn(df, first_idx, mid, remove_positions=op.get("remove_positions"))
             df, mid = result[0], result[2]
 
-            if return_log and len(result) >= 2 and result[1]:
-                log_lines.append(str(result[1]).strip())
-
-        # -------------------------
-        # X) 특정 인덱스 삭제 (drop_indices) - 동기화용
-        # -------------------------
-        elif t == "drop_indices":
-            if "indices" not in op:
-                raise KeyError(f"[op #{i} drop_indices] missing key: 'indices'")
-            if drop_rows_and_cols_fn is None:
-                raise ValueError("[drop_indices] requires drop_rows_and_cols_fn")
-                
-            result = drop_rows_and_cols_fn(df, first_idx, mid, op["indices"])
-            df, mid = result[0], result[2]
-            
             if return_log and len(result) >= 2 and result[1]:
                 log_lines.append(str(result[1]).strip())
 
@@ -1329,3 +1340,19 @@ def replay_edit_ops_on_df(
 
     return df, mid, ids
 
+
+# 지표 열 만드는 함수
+def make_col(title: str, vec_1d: np.ndarray, colname: str) -> pd.DataFrame:
+    vec_1d = np.asarray(vec_1d, dtype=float).reshape(-1)
+    return pd.concat(
+        [
+            pd.DataFrame([title], columns=[colname]),
+            pd.Series(vec_1d).to_frame(name=colname)
+        ],
+        axis=0
+    ).reset_index(drop=True)
+
+# 지표 테이블 만드는 함수
+def make_table(base_df, cols: list[pd.DataFrame]) -> pd.DataFrame:
+    ids_col = base_df.iloc[1:, :2].reset_index(drop=True)
+    return pd.concat([ids_col] + cols, axis=1)
